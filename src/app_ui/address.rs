@@ -15,32 +15,27 @@
  *  limitations under the License.
  *****************************************************************************/
 
+use crate::utils::encode_ss58_address;
 use crate::AppSW;
-use alloc::format;
 
 use ledger_device_sdk::include_gif;
 use ledger_device_sdk::nbgl::{NbglAddressReview, NbglGlyph};
 
-// Display only the last 20 bytes of the address
-const DISPLAY_ADDR_BYTES_LEN: usize = 20;
+/// Display an SS58-encoded Quantus address on the device for user verification.
+///
+/// Takes a 32-byte address hash (Poseidon hash of Dilithium public key),
+/// encodes it as SS58 with prefix 189, and displays it on screen with a QR code.
+/// NBGL on Stax/Flex/Apex P renders QR codes automatically for address review.
+pub fn ui_display_pk(address_hash: &[u8; 32]) -> Result<bool, AppSW> {
+    let ss58_addr = encode_ss58_address(address_hash)?;
 
-pub fn ui_display_pk(addr: &[u8]) -> Result<bool, AppSW> {
-    let addr_hex = format!(
-        "0x{}",
-        hex::encode(&addr[addr.len() - DISPLAY_ADDR_BYTES_LEN..]).to_uppercase()
-    );
-
-    // Load glyph from file with include_gif macro. Creates an NBGL compatible glyph.
     #[cfg(target_os = "apex_p")]
     const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("glyphs/crab_48x48.png", NBGL));
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("glyphs/crab_64x64.gif", NBGL));
-    #[cfg(any(target_os = "nanosplus", target_os = "nanox"))]
-    const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("icons/crab_14x14.gif", NBGL));
 
-    // Display the address confirmation screen.
     Ok(NbglAddressReview::new()
         .glyph(&FERRIS)
-        .review_title("Verify CRAB address")
-        .show(&addr_hex))
+        .review_title("Verify Quantus address")
+        .show(&ss58_addr))
 }
