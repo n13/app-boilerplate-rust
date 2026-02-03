@@ -3,7 +3,8 @@ use alloc::vec::Vec;
 use crate::AppSW;
 use blake2::digest::{consts::U64, Digest};
 use blake2::Blake2b;
-use ledger_device_sdk::ecc::{Secp256k1, SeedDerive};
+use ledger_device_sdk::ecc::{bip32_derive, CurvesId, Secret};
+use ledger_device_sdk::testing::debug_print;
 use qp_poseidon_core::hash_variable_length_bytes;
 use qp_rusty_crystals_dilithium::ml_dsa_87::{Keypair, PUBLICKEYBYTES};
 use qp_rusty_crystals_dilithium::SensitiveBytes32;
@@ -62,29 +63,43 @@ impl TryFrom<&[u8]> for Bip32Path {
 ///
 /// # Returns
 ///
-/// Dilithium `Keypair` containing public key (2592 bytes) and secret key (4896 bytes)
+/// Dilithium `Keypair` containing public key and secret key
 pub fn get_dilithium_keypair_from_path(path: &Bip32Path) -> Result<Keypair, AppSW> {
-    let (sk, _) = Secp256k1::derive_from(path.as_ref());
-    let mut seed = sk.key;
+    debug_print("=> get_dilithium_keypair_from_path\n");
+    // Use bip32_derive directly to get raw key bytes (ECPrivateKey.key is private)
+    let mut tmp = Secret::<64>::new();
+    debug_print("=> bip32_derive start\n");
+    bip32_derive(CurvesId::Secp256k1, path.as_ref(), tmp.as_mut(), None)
+        .map_err(|_| AppSW::KeyDeriveFail)?;
+    debug_print("=> bip32_derive done\n");
+    // Take first 32 bytes as seed for Dilithium keypair generation
+    let mut seed = [0u8; 32];
+    seed.copy_from_slice(&tmp.as_ref()[..32]);
     let entropy = SensitiveBytes32::new(&mut seed);
-    // seed is now zeroed by SensitiveBytes32::new()
-    Ok(Keypair::generate(entropy))
+    debug_print("=> Keypair::generate start\n");
+    // tmp is zeroed on drop via Secret's Drop impl, seed zeroed by SensitiveBytes32::new()
+    let kp = Keypair::generate(entropy);
+    debug_print("=> Keypair::generate done\n");
+    Ok(kp)
 }
 
 /// Compute the 32-byte address hash from a Dilithium public key using Poseidon.
 ///
 /// The Quantus network derives addresses by hashing the full ML-DSA-87 public key
-/// (2592 bytes) with the Poseidon2 hash function over the Goldilocks field.
+/// with the Poseidon2 hash function over the Goldilocks field.
 ///
 /// # Arguments
 ///
-/// * `pubkey_bytes` - 2592-byte Dilithium public key
+/// * `pubkey_bytes` - PUBLICKEYBYTES long Dilithium public key
 ///
 /// # Returns
 ///
 /// 32-byte Poseidon hash used as the account ID in SS58 encoding
 pub fn get_address_hash_from_pubkey(pubkey_bytes: &[u8; PUBLICKEYBYTES]) -> [u8; 32] {
-    hash_variable_length_bytes(pubkey_bytes)
+    debug_print("=> get_address_hash_from_pubkey (poseidon)\n");
+    let h = hash_variable_length_bytes(pubkey_bytes);
+    debug_print("=> poseidon hash done\n");
+    h
 }
 
 /// SS58 network prefix for the Quantus network.
@@ -109,6 +124,7 @@ const SS58_PREFIX: u16 = 189;
 ///
 /// SS58-encoded address string
 pub fn encode_ss58_address(account_id: &[u8; 32]) -> Result<alloc::string::String, AppSW> {
+    debug_print("=> encode_ss58_address\n");
     // Encode the 2-byte prefix for network ID 189
     let prefix_byte0 = ((SS58_PREFIX & 0xFC) >> 2) as u8 | 0x40;
     let prefix_byte1 = (SS58_PREFIX >> 8) as u8 | ((SS58_PREFIX & 0x03) << 6) as u8;

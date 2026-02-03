@@ -21,13 +21,12 @@ use alloc::vec::Vec;
 use ledger_device_sdk::io::Comm;
 use ledger_device_sdk::nbgl::NbglHomeAndSettings;
 use ledger_device_sdk::testing::debug_print;
+use qp_rusty_crystals_dilithium::ml_dsa_87::SIGNBYTES;
 
 use serde::Deserialize;
 use serde_json_core::from_slice;
 
 const MAX_TRANSACTION_LEN: usize = 510;
-
-use ledger_device_sdk::libcall::swap::CreateTxParams;
 
 #[derive(Deserialize)]
 pub struct Tx<'a> {
@@ -41,36 +40,23 @@ pub struct Tx<'a> {
 }
 
 /// Transaction context holding state between APDU chunks.
-pub struct TxContext<'a> {
+pub struct TxContext {
     raw_tx: Vec<u8>,
     path: Bip32Path,
     review_finished: bool,
     pub home: NbglHomeAndSettings,
-    pub swap_params: Option<&'a CreateTxParams>,
 }
 
-impl<'a> TxContext<'a> {
-    pub fn new() -> TxContext<'a> {
+impl TxContext {
+    pub fn new() -> TxContext {
         TxContext {
             raw_tx: Vec::new(),
             path: Default::default(),
             review_finished: false,
             home: Default::default(),
-            swap_params: None,
         }
     }
 
-    pub fn new_with_swap(params: &'a CreateTxParams) -> TxContext<'a> {
-        TxContext {
-            raw_tx: Vec::new(),
-            path: Default::default(),
-            review_finished: false,
-            home: Default::default(),
-            swap_params: Some(params),
-        }
-    }
-
-    #[allow(dead_code)]
     pub fn finished(&self) -> bool {
         self.review_finished
     }
@@ -121,24 +107,12 @@ pub fn handler_sign_tx(
             let (tx, _): (Tx, usize) = from_slice(&ctx.raw_tx).map_err(|_| AppSW::TxParsingFail)?;
             debug_print("Tx parsed successfully\n");
 
-            if let Some(params) = ctx.swap_params {
+            if ui_display_tx(&tx)? {
                 ctx.review_finished = true;
-                if let Err(error) = crate::swap::check_swap_params(params, &tx) {
-                    error.append_to_comm(comm);
-                    Err(AppSW::SwapFail)
-                } else {
-                    debug_print("Swap validation success, bypassing UI\n");
-                    compute_signature_and_append(comm, ctx)
-                }
+                compute_signature_and_append(comm, ctx)
             } else {
-                debug_print("Normal mode, showing UI\n");
-                if ui_display_tx(&tx)? {
-                    ctx.review_finished = true;
-                    compute_signature_and_append(comm, ctx)
-                } else {
-                    ctx.review_finished = true;
-                    Err(AppSW::Deny)
-                }
+                ctx.review_finished = true;
+                Err(AppSW::Deny)
             }
         }
     }
@@ -151,18 +125,22 @@ fn compute_signature_and_append(comm: &mut Comm, ctx: &mut TxContext) -> Result<
     // Derive Dilithium keypair from BIP32 path
     let keypair = get_dilithium_keypair_from_path(&ctx.path)?;
 
-    // Sign the raw transaction bytes (deterministic, no hedge, no context)
-    let sig = keypair
-        .sign(&ctx.raw_tx, None, None)
+    // Allocate signature buffer on heap to save stack space (4627 bytes)
+    let mut sig_buf = alloc::vec![0u8; SIGNBYTES];
+    let sig: &mut [u8; SIGNBYTES] = sig_buf.as_mut_slice().try_into().unwrap();
+
+    // Sign the raw transaction bytes into pre-allocated buffer (deterministic, no hedge, no context)
+    keypair
+        .sign_into(sig, &ctx.raw_tx, None, None)
         .map_err(|_| AppSW::TxSignFail)?;
 
     // Append signature length as 4 bytes (big-endian) since sig > 255 bytes
-    let sig_len = sig.len() as u32;
+    let sig_len = SIGNBYTES as u32;
     comm.append(&sig_len.to_be_bytes());
     // Append signature bytes
-    comm.append(&sig);
+    comm.append(&sig_buf);
     // Append public key (receiver needs it for verification and it's part of the Quantus signature format)
-    comm.append(&keypair.public.bytes);
+    comm.append(&*keypair.public.bytes);
 
     Ok(())
 }
