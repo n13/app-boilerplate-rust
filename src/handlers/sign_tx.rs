@@ -15,13 +15,13 @@
  *  limitations under the License.
  *****************************************************************************/
 use crate::app_ui::sign::ui_display_tx;
-use crate::utils::{get_dilithium_keypair_from_path, Bip32Path};
+use crate::ml_dsa_ffi::CRYPTO_BYTES as SIGNBYTES;
+use crate::utils::Bip32Path;
 use crate::AppSW;
 use alloc::vec::Vec;
 use ledger_device_sdk::io::Comm;
 use ledger_device_sdk::nbgl::NbglHomeAndSettings;
 use ledger_device_sdk::testing::debug_print;
-use qp_rusty_crystals_dilithium::ml_dsa_87::SIGNBYTES;
 
 use serde::Deserialize;
 use serde_json_core::from_slice;
@@ -119,28 +119,19 @@ pub fn handler_sign_tx(
 }
 
 /// Sign the raw transaction bytes with Dilithium and append signature + pubkey to response.
-fn compute_signature_and_append(comm: &mut Comm, ctx: &mut TxContext) -> Result<(), AppSW> {
-    debug_print("Signing transaction with Dilithium\n");
+///
+/// TODO: Signing requires the small NTT implementation which is not yet available in the C library.
+/// This will be implemented once we port the small NTT functions from m4fstack assembly to pure C.
+fn compute_signature_and_append(_comm: &mut Comm, _ctx: &mut TxContext) -> Result<(), AppSW> {
+    debug_print("Signing transaction with Dilithium - NOT YET IMPLEMENTED\n");
 
-    // Derive Dilithium keypair from BIP32 path
-    let keypair = get_dilithium_keypair_from_path(&ctx.path)?;
+    // Signing requires the small_ntt functions which are assembly-only in m4fstack
+    // and haven't been ported to pure C yet.
+    //
+    // Future implementation:
+    // 1. Port small_ntt_asm_769, small_invntt_asm_769, small_basemul_asm_769 to pure C
+    // 2. Call crypto_sign_signature_ctx from ml_dsa_ffi
+    // 3. Append signature and public key to response
 
-    // Allocate signature buffer on heap to save stack space (4627 bytes)
-    let mut sig_buf = alloc::vec![0u8; SIGNBYTES];
-    let sig: &mut [u8; SIGNBYTES] = sig_buf.as_mut_slice().try_into().unwrap();
-
-    // Sign the raw transaction bytes into pre-allocated buffer (deterministic, no hedge, no context)
-    keypair
-        .sign_into(sig, &ctx.raw_tx, None, None)
-        .map_err(|_| AppSW::TxSignFail)?;
-
-    // Append signature length as 4 bytes (big-endian) since sig > 255 bytes
-    let sig_len = SIGNBYTES as u32;
-    comm.append(&sig_len.to_be_bytes());
-    // Append signature bytes
-    comm.append(&sig_buf);
-    // Append public key (receiver needs it for verification and it's part of the Quantus signature format)
-    comm.append(&*keypair.public.bytes);
-
-    Ok(())
+    Err(AppSW::TxSignFail)
 }

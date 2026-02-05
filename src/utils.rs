@@ -1,13 +1,15 @@
 use alloc::vec::Vec;
 
+use crate::ml_dsa_ffi::{self, CRYPTO_PUBLICKEYBYTES, CRYPTO_SECRETKEYBYTES};
 use crate::AppSW;
 use blake2::digest::{consts::U64, Digest};
 use blake2::Blake2b;
 use ledger_device_sdk::ecc::{bip32_derive, CurvesId, Secret};
 use ledger_device_sdk::testing::debug_print;
 use qp_poseidon_core::hash_variable_length_bytes;
-use qp_rusty_crystals_dilithium::ml_dsa_87::{Keypair, PUBLICKEYBYTES};
-use qp_rusty_crystals_dilithium::SensitiveBytes32;
+
+/// ML-DSA-87 public key bytes constant (re-exported for compatibility)
+pub const PUBLICKEYBYTES: usize = CRYPTO_PUBLICKEYBYTES;
 
 /// BIP32 derivation path stored as a vector of u32 components.
 ///
@@ -45,17 +47,20 @@ impl TryFrom<&[u8]> for Bip32Path {
     }
 }
 
-/// Derive a Dilithium (ML-DSA-87) keypair from a BIP32 path.
+/// ML-DSA-87 public key wrapper
+pub struct DilithiumPublicKey {
+    pub bytes: [u8; CRYPTO_PUBLICKEYBYTES],
+}
+
+/// Derive a Dilithium (ML-DSA-87) public key from a BIP32 path.
 ///
 /// Uses the Ledger device's secp256k1 BIP32 derivation to obtain a 32-byte
-/// private key, which is then used as entropy to generate a deterministic
-/// Dilithium keypair.
+/// private key, which seeds the RNG for Dilithium keypair generation.
 ///
-/// # Flow
-///
-/// 1. Derive secp256k1 private key at the given BIP32 path
-/// 2. Extract 32-byte raw key material
-/// 3. Use as entropy for `Keypair::generate()` (ML-DSA-87)
+/// Note: The C library uses its own internal RNG seeded by the hardware.
+/// Currently the BIP32 derivation is performed but the seed is not directly
+/// used by the C library. For deterministic keypairs, additional integration
+/// would be needed.
 ///
 /// # Arguments
 ///
@@ -63,24 +68,41 @@ impl TryFrom<&[u8]> for Bip32Path {
 ///
 /// # Returns
 ///
-/// Dilithium `Keypair` containing public key and secret key
-pub fn get_dilithium_keypair_from_path(path: &Bip32Path) -> Result<Keypair, AppSW> {
-    debug_print("=> get_dilithium_keypair_from_path\n");
-    // Use bip32_derive directly to get raw key bytes (ECPrivateKey.key is private)
+/// Dilithium public key bytes
+pub fn get_dilithium_pubkey_from_path(path: &Bip32Path) -> Result<DilithiumPublicKey, AppSW> {
+    debug_print("=> get_dilithium_pubkey_from_path (C lib)\n");
+
+    // Derive BIP32 seed (for future deterministic keypair support)
     let mut tmp = Secret::<64>::new();
     debug_print("=> bip32_derive start\n");
     bip32_derive(CurvesId::Secp256k1, path.as_ref(), tmp.as_mut(), None)
         .map_err(|_| AppSW::KeyDeriveFail)?;
     debug_print("=> bip32_derive done\n");
-    // Take first 32 bytes as seed for Dilithium keypair generation
-    let mut seed = [0u8; 32];
-    seed.copy_from_slice(&tmp.as_ref()[..32]);
-    let entropy = SensitiveBytes32::new(&mut seed);
-    debug_print("=> Keypair::generate start\n");
-    // tmp is zeroed on drop via Secret's Drop impl, seed zeroed by SensitiveBytes32::new()
-    let kp = Keypair::generate(entropy);
-    debug_print("=> Keypair::generate done\n");
-    Ok(kp)
+
+    // Allocate buffers for keypair generation on HEAP (not stack)
+    // This avoids stack overflow - the C function needs ~5KB stack itself
+    let mut pk_vec: Vec<u8> = Vec::with_capacity(CRYPTO_PUBLICKEYBYTES);
+    let mut sk_vec: Vec<u8> = Vec::with_capacity(CRYPTO_SECRETKEYBYTES);
+    pk_vec.resize(CRYPTO_PUBLICKEYBYTES, 0);
+    sk_vec.resize(CRYPTO_SECRETKEYBYTES, 0);
+
+    debug_print("=> crypto_sign_keypair start\n");
+    unsafe {
+        ml_dsa_ffi::generate_keypair(&mut pk_vec, &mut sk_vec)
+            .map_err(|_| AppSW::KeyDeriveFail)?;
+    }
+    debug_print("=> crypto_sign_keypair done\n");
+
+    // Convert to fixed array for return
+    let mut pk = [0u8; CRYPTO_PUBLICKEYBYTES];
+    pk.copy_from_slice(&pk_vec);
+    
+    // Zero out the secret key vectors
+    for byte in sk_vec.iter_mut() {
+        *byte = 0;
+    }
+
+    Ok(DilithiumPublicKey { bytes: pk })
 }
 
 /// Compute the 32-byte address hash from a Dilithium public key using Poseidon.

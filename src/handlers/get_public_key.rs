@@ -16,11 +16,10 @@
  *****************************************************************************/
 
 use crate::app_ui::address::ui_display_pk;
-use crate::utils::{get_address_hash_from_pubkey, get_dilithium_keypair_from_path, Bip32Path};
+use crate::utils::{get_address_hash_from_pubkey, get_dilithium_pubkey_from_path, Bip32Path, PUBLICKEYBYTES};
 use crate::AppSW;
 use ledger_device_sdk::io::Comm;
 use ledger_device_sdk::testing::debug_print;
-use qp_rusty_crystals_dilithium::ml_dsa_87::PUBLICKEYBYTES;
 
 /// Handler for GET_PUBLIC_KEY APDU command.
 ///
@@ -30,7 +29,7 @@ use qp_rusty_crystals_dilithium::ml_dsa_87::PUBLICKEYBYTES;
 /// # Flow
 ///
 /// 1. Parse BIP32 path from APDU data
-/// 2. Derive Dilithium keypair via secp256k1 seed → Keypair::generate()
+/// 2. Generate Dilithium keypair using m4fstack C library
 /// 3. If display requested, compute Poseidon address hash and show SS58 address
 /// 4. Return the 2592-byte Dilithium public key to the client
 ///
@@ -41,15 +40,15 @@ pub fn handler_get_public_key(comm: &mut Comm, display: bool) -> Result<(), AppS
     debug_print("=> handler_get_public_key\n");
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     let path: Bip32Path = data.try_into()?;
-    debug_print("=> path parsed, deriving keypair\n");
+    debug_print("=> path parsed, deriving pubkey\n");
 
-    // Derive Dilithium keypair from BIP32 path
-    let keypair = get_dilithium_keypair_from_path(&path)?;
-    debug_print("=> keypair derived\n");
+    // Derive Dilithium public key from BIP32 path using C library
+    let pubkey = get_dilithium_pubkey_from_path(&path)?;
+    debug_print("=> pubkey derived\n");
 
     // Display address on device if requested
     if display {
-        let address_hash = get_address_hash_from_pubkey(&*keypair.public.bytes);
+        let address_hash = get_address_hash_from_pubkey(&pubkey.bytes);
         if !ui_display_pk(&address_hash)? {
             return Err(AppSW::Deny);
         }
@@ -58,7 +57,7 @@ pub fn handler_get_public_key(comm: &mut Comm, display: bool) -> Result<(), AppS
     // Return public key length as 2 bytes (big-endian) since it exceeds 255
     let pk_len = PUBLICKEYBYTES as u16;
     comm.append(&pk_len.to_be_bytes());
-    comm.append(&*keypair.public.bytes);
+    comm.append(&pubkey.bytes);
 
     Ok(())
 }

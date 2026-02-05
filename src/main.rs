@@ -19,6 +19,7 @@
 #![no_main]
 
 mod utils;
+mod ml_dsa_ffi;
 mod app_ui {
     pub mod address;
     pub mod menu;
@@ -44,7 +45,48 @@ use ledger_device_sdk::{
     testing::debug_print,
 };
 
-ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
+// Custom panic handler that prints the panic message for debugging
+fn debug_panic(info: &core::panic::PanicInfo) -> ! {
+    use ledger_device_sdk::testing::debug_print;
+    debug_print("!!! PANIC !!!\n");
+    if let Some(location) = info.location() {
+        // Print file and line
+        debug_print("at ");
+        debug_print(location.file());
+        debug_print(":");
+        // Convert line number to string
+        let line = location.line();
+        let mut buf = [0u8; 10];
+        let mut n = line;
+        let mut i = 0;
+        if n == 0 {
+            buf[0] = b'0';
+            i = 1;
+        } else {
+            while n > 0 {
+                buf[i] = b'0' + (n % 10) as u8;
+                n /= 10;
+                i += 1;
+            }
+        }
+        // Reverse the digits
+        for j in 0..i/2 {
+            buf.swap(j, i - 1 - j);
+        }
+        if let Ok(s) = core::str::from_utf8(&buf[..i]) {
+            debug_print(s);
+        }
+        debug_print("\n");
+    }
+    if let Some(msg) = info.payload().downcast_ref::<&str>() {
+        debug_print("msg: ");
+        debug_print(msg);
+        debug_print("\n");
+    }
+    ledger_device_sdk::exit_app(1);
+}
+
+ledger_device_sdk::set_panic!(debug_panic);
 
 // Required for using String, Vec, format!...
 extern crate alloc;
