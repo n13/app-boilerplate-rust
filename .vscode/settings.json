@@ -17,6 +17,6 @@
             "test_sign_tx_refused",
             "test_version"
         ],
-        "selectedUseCase": "release"
+        "selectedUseCase": "debug"
     }
 }

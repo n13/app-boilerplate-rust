@@ -79,26 +79,20 @@ pub fn get_dilithium_pubkey_from_path(path: &Bip32Path) -> Result<DilithiumPubli
         .map_err(|_| AppSW::KeyDeriveFail)?;
     debug_print("=> bip32_derive done\n");
 
-    // Allocate buffers for keypair generation on HEAP (not stack)
-    // This avoids stack overflow - the C function needs ~5KB stack itself
-    let mut pk_vec: Vec<u8> = Vec::with_capacity(CRYPTO_PUBLICKEYBYTES);
-    let mut sk_vec: Vec<u8> = Vec::with_capacity(CRYPTO_SECRETKEYBYTES);
-    pk_vec.resize(CRYPTO_PUBLICKEYBYTES, 0);
-    sk_vec.resize(CRYPTO_SECRETKEYBYTES, 0);
-
+    // Allocate all buffers on STACK
+    // C code uses compact static workspace (tA + union of tB/tC/shake)
+    let mut pk = [0u8; CRYPTO_PUBLICKEYBYTES];
+    let mut sk = [0u8; CRYPTO_SECRETKEYBYTES];
+    
     debug_print("=> crypto_sign_keypair start\n");
     unsafe {
-        ml_dsa_ffi::generate_keypair(&mut pk_vec, &mut sk_vec)
+        ml_dsa_ffi::generate_keypair(&mut pk, &mut sk)
             .map_err(|_| AppSW::KeyDeriveFail)?;
     }
     debug_print("=> crypto_sign_keypair done\n");
 
-    // Convert to fixed array for return
-    let mut pk = [0u8; CRYPTO_PUBLICKEYBYTES];
-    pk.copy_from_slice(&pk_vec);
-    
-    // Zero out the secret key vectors
-    for byte in sk_vec.iter_mut() {
+    // Zero out secret key
+    for byte in sk.iter_mut() {
         *byte = 0;
     }
 

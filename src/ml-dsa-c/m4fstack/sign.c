@@ -23,22 +23,29 @@
 *
 * Returns 0 (success)
 **************************************************/
+/* Minimal BSS usage - compact workspace */
+/* tA needs to persist across inner loop, tB/tC can share space */
+static struct {
+  poly tA;
+  union {
+    poly tB;
+    poly tC;
+    shake256incctx s256;
+    uint8_t tr[TRBYTES];
+  } u;
+  uint8_t seedbuf[2*SEEDBYTES + CRHBYTES];
+} g_ws;
+
 int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
   unsigned int i, j;
-  uint8_t seedbuf[2*SEEDBYTES + CRHBYTES];
   const uint8_t *rho, *rhoprime, *key;
-
-  poly tA, tB;
-
-  union {
-    uint8_t tr[TRBYTES];
-    shake256incctx s256;
-    poly tC;
-  } data;
-
-  shake256incctx *s256 = &data.s256;
-  uint8_t *tr          = &data.tr[0];
-  poly *tC             = &data.tC;
+  uint8_t *seedbuf = g_ws.seedbuf;
+  
+  poly *tA = &g_ws.tA;
+  poly *tB = &g_ws.u.tB;
+  poly *tC = &g_ws.u.tC;
+  shake256incctx *s256 = &g_ws.u.s256;
+  uint8_t *tr = g_ws.u.tr;
 
   /* Get randomness for rho, rhoprime and key */
   randombytes(seedbuf, SEEDBYTES);
@@ -68,9 +75,9 @@ int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
     }
     poly_ntt(tC);
     /* expand part of the matrix */
-    poly_uniform(&tB, rho, (i << 8) + 0);
+    poly_uniform(tB, rho, (i << 8) + 0);
     /* partial matrix-vector multiplication */
-    poly_pointwise_montgomery(&tA, &tB, tC);
+    poly_pointwise_montgomery(tA, tB, tC);
     for(j = 1; j < L; j++)
     {
       /* Expand part of s1 */
@@ -80,23 +87,23 @@ int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
         pack_sk_s1(sk, tC, j);
       }
       poly_ntt(tC);
-      poly_uniform(&tB, rho, (i << 8) + j);
-      poly_pointwise_acc_montgomery(&tA, &tB, tC);
+      poly_uniform(tB, rho, (i << 8) + j);
+      poly_pointwise_acc_montgomery(tA, tB, tC);
     }
 
-    poly_reduce(&tA);
-    poly_invntt_tomont(&tA);
+    poly_reduce(tA);
+    poly_invntt_tomont(tA);
 
     /* Add error vector s2 */
     /* Sample short vector s2 */
-    poly_uniform_eta(&tB, rhoprime, L + i);
-    pack_sk_s2(sk, &tB, i);
-    poly_add(&tA, &tA, &tB);
+    poly_uniform_eta(tB, rhoprime, L + i);
+    pack_sk_s2(sk, tB, i);
+    poly_add(tA, tA, tB);
 
     /* Compute t{0,1} */
-    poly_caddq(&tA);
-    poly_power2round(tC, &tB, &tA);
-    pack_sk_t0(sk, &tB, i);
+    poly_caddq(tA);
+    poly_power2round(tC, tB, tA);
+    pack_sk_t0(sk, tB, i);
     pack_pk_t1(pk, tC, i);
 
   }

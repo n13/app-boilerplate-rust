@@ -19,4 +19,4 @@ build-std-features = ["compiler-builtins-mem"]
 # Authorized values are [2048, 4096, 8192, 16384, 24576]
 # Max heap needed for Dilithium (ML-DSA-87) key/signature operations
 [env]
-HEAP_SIZE = "24576"
+HEAP_SIZE = "16384"
