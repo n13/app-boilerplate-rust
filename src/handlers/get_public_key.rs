@@ -49,7 +49,7 @@ pub fn handler_get_public_key(comm: &mut Comm, display: bool) -> Result<(), AppS
 
     // Display address on device if requested
     if display {
-        let address_hash = get_address_hash_from_pubkey(&*keypair.public.bytes);
+        let address_hash = get_address_hash_from_pubkey(&keypair.public.bytes);
         if !ui_display_pk(&address_hash)? {
             return Err(AppSW::Deny);
         }
@@ -58,7 +58,7 @@ pub fn handler_get_public_key(comm: &mut Comm, display: bool) -> Result<(), AppS
     // Return public key length as 2 bytes (big-endian) since it exceeds 255
     let pk_len = PUBLICKEYBYTES as u16;
     comm.append(&pk_len.to_be_bytes());
-    comm.append(&*keypair.public.bytes);
+    comm.append(&keypair.public.bytes);
 
     Ok(())
 }

@@ -10,10 +10,10 @@ serde = { version="1.0.192", default-features = false, features = ["derive"] }
 serde-json-core = "0.6.0"
 hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
 numtoa = "0.2.4"
-# qp-rusty-crystals-dilithium = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", tag = "embedded_1_0", default-features = false , features=["embedded"]}
-qp-rusty-crystals-dilithium = { path = "../../qp-rusty-crystals/dilithium", default-features = false, features=["embedded"]}
+qp-rusty-crystals-dilithium = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", tag = "embedded_1_2", default-features = false , features=["embedded"]}
+# qp-rusty-crystals-dilithium = { path = "../../qp-rusty-crystals/dilithium", default-features = false, tag = "embedded_1_2" features=["embedded"]}
 
-# qp-rusty-crystals-hdwallet = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", tag = "embedded_1_0", default-features = false, features = ["quantus_v1"] }
+# qp-rusty-crystals-hdwallet = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", tag = "embedded_1_2", default-features = false, features = ["quantus_v1"] }
 qp-poseidon-core = { version = "1.0.1", default-features = false, features = ["p3"] }
 blake2 = { version = "0.10", default-features = false }
 bs58 = { version = "0.5", default-features = false, features = ["alloc"] }

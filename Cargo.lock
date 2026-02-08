@@ -1060,6 +1060,7 @@ dependencies = [
 [[package]]
 name = "qp-rusty-crystals-dilithium"
 version = "2.0.0"
+source = "git+https://github.com/Quantus-Network/qp-rusty-crystals.git?tag=embedded_1_2#9ce6ea40b0fdbaabc6cfd70d3bdc8f8d052a177a"
 dependencies = [
  "zeroize",
 ]

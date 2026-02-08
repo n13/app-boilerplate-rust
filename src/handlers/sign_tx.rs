@@ -125,13 +125,9 @@ fn compute_signature_and_append(comm: &mut Comm, ctx: &mut TxContext) -> Result<
     // Derive Dilithium keypair from BIP32 path
     let keypair = get_dilithium_keypair_from_path(&ctx.path)?;
 
-    // Allocate signature buffer on heap to save stack space (4627 bytes)
-    let mut sig_buf = alloc::vec![0u8; SIGNBYTES];
-    let sig: &mut [u8; SIGNBYTES] = sig_buf.as_mut_slice().try_into().unwrap();
-
-    // Sign the raw transaction bytes into pre-allocated buffer (deterministic, no hedge, no context)
-    keypair
-        .sign_into(sig, &ctx.raw_tx, None, None)
+    // Sign the raw transaction bytes (deterministic, no hedge, no context)
+    let sig_buf = keypair
+        .sign(&ctx.raw_tx, None, None)
         .map_err(|_| AppSW::TxSignFail)?;
 
     // Append signature length as 4 bytes (big-endian) since sig > 255 bytes
@@ -140,7 +136,7 @@ fn compute_signature_and_append(comm: &mut Comm, ctx: &mut TxContext) -> Result<
     // Append signature bytes
     comm.append(&sig_buf);
     // Append public key (receiver needs it for verification and it's part of the Quantus signature format)
-    comm.append(&*keypair.public.bytes);
+    comm.append(&keypair.public.bytes);
 
     Ok(())
 }
