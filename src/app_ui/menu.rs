@@ -27,9 +27,6 @@ pub fn ui_menu_main(_: &mut Comm) -> NbglHomeAndSettings {
     const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("glyphs/crab_48x48.png", NBGL));
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("glyphs/crab_64x64.gif", NBGL));
-    #[cfg(any(target_os = "nanosplus", target_os = "nanox"))]
-    const FERRIS: NbglGlyph =
-        NbglGlyph::from_include(include_gif!("glyphs/home_nano_nbgl.png", NBGL));
 
     let settings_strings = [["Display Memo", "Allow display of transaction memo."]];
     let mut settings: Settings = Default::default();
@@ -39,7 +36,7 @@ pub fn ui_menu_main(_: &mut Comm) -> NbglHomeAndSettings {
         .glyph(&FERRIS)
         .settings(settings.get_mut(), &settings_strings)
         .infos(
-            "Boilerplate",
+            "Quantus",
             env!("CARGO_PKG_VERSION"),
             env!("CARGO_PKG_AUTHORS"),
         )

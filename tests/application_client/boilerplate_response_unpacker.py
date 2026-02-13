@@ -42,28 +42,32 @@ def unpack_get_app_and_version_response(response: bytes) -> Tuple[str, str]:
 
     return app_name_raw.decode("ascii"), version_raw.decode("ascii")
 
-# Unpack from response:
-# response = pub_key_len (1)
-#            pub_key (var)
-#            chain_code_len (1)
-#            chain_code (var)
-def unpack_get_public_key_response(response: bytes) -> Tuple[int, bytes, int, bytes]:
-    response, pub_key_len, pub_key = pop_size_prefixed_buf_from_buf(response)
-    response, chain_code_len, chain_code = pop_size_prefixed_buf_from_buf(response)
-
-    assert pub_key_len == 65
-    assert chain_code_len == 32
-    assert len(response) == 0
-    return pub_key_len, pub_key, chain_code_len, chain_code
+# ML-DSA-87 (Dilithium) sizes
+DILITHIUM_PUBLICKEYBYTES = 2592
+DILITHIUM_SIGNBYTES = 4627
 
 # Unpack from response:
-# response = der_sig_len (1)
-#            der_sig (var)
-#            v (1)
-def unpack_sign_tx_response(response: bytes) -> Tuple[int, bytes, int]:
-    response, der_sig_len, der_sig = pop_size_prefixed_buf_from_buf(response)
-    response, v = pop_sized_buf_from_buffer(response, 1)
+# response = pub_key_len (2 bytes, big-endian u16)
+#            pub_key (2592 bytes for ML-DSA-87)
+def unpack_get_public_key_response(response: bytes) -> Tuple[int, bytes]:
+    pub_key_len = int.from_bytes(response[0:2], byteorder='big')
+    pub_key = response[2:2 + pub_key_len]
 
-    assert len(response) == 0
+    assert pub_key_len == DILITHIUM_PUBLICKEYBYTES
+    assert len(pub_key) == pub_key_len
+    assert len(response) == 2 + pub_key_len
+    return pub_key_len, pub_key
 
-    return der_sig_len, der_sig, int.from_bytes(v, byteorder='big')
+# Unpack from response:
+# response = sig_len (4 bytes, big-endian u32)
+#            signature (4627 bytes for ML-DSA-87)
+#            pub_key (2592 bytes for ML-DSA-87)
+def unpack_sign_tx_response(response: bytes) -> Tuple[int, bytes, bytes]:
+    sig_len = int.from_bytes(response[0:4], byteorder='big')
+    signature = response[4:4 + sig_len]
+    pub_key = response[4 + sig_len:]
+
+    assert sig_len == DILITHIUM_SIGNBYTES
+    assert len(signature) == sig_len
+    assert len(pub_key) == DILITHIUM_PUBLICKEYBYTES
+    return sig_len, signature, pub_key

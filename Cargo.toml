@@ -1,6 +1,6 @@
 [package]
-name = "app-boilerplate-rust"
-version = "1.7.7"
+name = "app-quantus-rust"
+version = "1.0.0"
 authors = ["Ledger"]
 edition = "2021"
 
@@ -10,26 +10,27 @@ serde = { version="1.0.192", default-features = false, features = ["derive"] }
 serde-json-core = "0.6.0"
 hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
 numtoa = "0.2.4"
-arrayvec = { version = "0.7", default-features = false }
+qp-rusty-crystals-dilithium = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", tag = "embedded_1_2", default-features = false , features=["embedded"]}
+# qp-rusty-crystals-dilithium = { path = "../../qp-rusty-crystals/dilithium", default-features = false, tag = "embedded_1_2" features=["embedded"]}
+
+# qp-rusty-crystals-hdwallet = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", tag = "embedded_1_2", default-features = false, features = ["quantus_v1"] }
+qp-poseidon-core = { version = "1.0.1", default-features = false, features = ["p3"] }
+blake2 = { version = "0.10", default-features = false }
+bs58 = { version = "0.5", default-features = false, features = ["alloc"] }
 
 [build-dependencies]
 image = "0.25.7"
 
 [features]
-default = ["ledger_device_sdk/nano_nbgl"]
+default = ["ledger_device_sdk/nano_nbgl", "debug"]
 debug = ["ledger_device_sdk/debug"]
 
 [package.metadata.ledger]
 curve = ["secp256k1"]
 flags = "0"
-path = ["44'/1'"]
-name = "Rust Boilerplate"
-
-[package.metadata.ledger.nanox]
-icon = "icons/crab_14x14.gif"
-
-[package.metadata.ledger.nanosplus]
-icon = "icons/crab_14x14.gif"
+# path = ["m/44'/189189'/0'/0'/0'"] # Ledger seems to omit the m?!
+path = ["44'/189189'/0'/0'/0'"]
+name = "Quantus Network"
 
 [package.metadata.ledger.stax]
 icon = "icons/crab_32x32.gif"
@@ -41,4 +42,4 @@ icon = "icons/crab_40x40.gif"
 icon = "icons/crab_32x32.png"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("apex_p", "stax", "flex", "nanos", "nanox", "nanosplus"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("apex_p", "stax", "flex"))'] }

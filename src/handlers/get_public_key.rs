@@ -16,54 +16,49 @@
  *****************************************************************************/
 
 use crate::app_ui::address::ui_display_pk;
-use crate::utils::{get_address_hash_from_pubkey, get_pubkey_from_path, Bip32Path};
+use crate::utils::{get_address_hash_from_pubkey, get_dilithium_keypair_from_path, Bip32Path};
 use crate::AppSW;
-use ledger_device_sdk::ecc::{Secp256k1, SeedDerive};
 use ledger_device_sdk::io::Comm;
+use ledger_device_sdk::testing::debug_print;
+use qp_rusty_crystals_dilithium::ml_dsa_87::PUBLICKEYBYTES;
 
 /// Handler for GET_PUBLIC_KEY APDU command.
 ///
-/// Derives and returns the public key for a given BIP32 path, optionally
-/// displaying the corresponding address on the device for user verification.
+/// Derives and returns the Dilithium (ML-DSA-87) public key for a given BIP32 path,
+/// optionally displaying the corresponding SS58 address on the device for user verification.
 ///
 /// # Flow
 ///
 /// 1. Parse BIP32 path from APDU data
-/// 2. Derive public key using shared helper `get_pubkey_from_path()`
-/// 3. If display requested, compute and show address on device
-/// 4. Return public key and chaincode to client
+/// 2. Derive Dilithium keypair via secp256k1 seed → Keypair::generate()
+/// 3. If display requested, compute Poseidon address hash and show SS58 address
+/// 4. Return the 2592-byte Dilithium public key to the client
 ///
-/// # Note
+/// # Response Format
 ///
-/// This handler uses the same address derivation logic as `swap::check_address()`
-/// via the shared `get_address_hash_from_pubkey()` helper, ensuring consistency.
+/// [pubkey_len_hi (1 byte)] [pubkey_len_lo (1 byte)] [pubkey (2592 bytes)]
 pub fn handler_get_public_key(comm: &mut Comm, display: bool) -> Result<(), AppSW> {
+    debug_print("=> handler_get_public_key\n");
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     let path: Bip32Path = data.try_into()?;
+    debug_print("=> path parsed, deriving keypair\n");
 
-    // Derive public key using shared helper (also used by swap)
-    let pubkey = get_pubkey_from_path(&path)?;
-    let (_, cc) = Secp256k1::derive_from(path.as_ref());
+    // Derive Dilithium keypair from BIP32 path
+    let keypair = get_dilithium_keypair_from_path(&path)?;
+    debug_print("=> keypair derived\n");
 
     // Display address on device if requested
     if display {
-        // Compute address using shared helper (same as swap::check_address)
-        let address_hash = get_address_hash_from_pubkey(&pubkey);
-
+        let address_hash = get_address_hash_from_pubkey(&keypair.public.bytes);
         if !ui_display_pk(&address_hash)? {
             return Err(AppSW::Deny);
         }
     }
 
-    // Return public key to client (65 bytes uncompressed)
-    comm.append(&[pubkey.len() as u8]);
-    comm.append(&pubkey);
-
-    // Return chaincode
-    const CHAINCODE_LEN: u8 = 32;
-    let code = cc.unwrap();
-    comm.append(&[CHAINCODE_LEN]);
-    comm.append(&code.value);
+    // Return public key length as 2 bytes (big-endian) since it exceeds 255
+    let pk_len = PUBLICKEYBYTES as u16;
+    comm.append(&pk_len.to_be_bytes());
+    comm.append(&keypair.public.bytes);
 
     Ok(())
 }
